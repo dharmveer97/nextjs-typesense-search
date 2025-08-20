@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  # Typesense Server for Local Development
+  typesense:
+    image: typesense/typesense:26.0
+    container_name: typesense-local
+    ports:
+      - "8108:8108"
+    volumes:
+      - ./typesense-data:/data
+    command: >
+      --data-dir /data
+      --api-key=xyz123
+      --search-only-api-key=search-only-xyz123
+      --enable-cors
+      --log-level=INFO
+    environment:
+      - TYPESENSE_API_KEY=xyz123
+      - TYPESENSE_SEARCH_ONLY_API_KEY=search-only-xyz123
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8108/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - typesense-local
+
+networks:
+  typesense-local:
+    driver: bridge
+
+volumes:
+  typesense-data:

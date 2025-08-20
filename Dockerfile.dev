@@ -1,0 +1,30 @@
+# Development Dockerfile for Next.js App
+FROM node:18-alpine
+
+# Install dependencies only when needed
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy app source
+COPY . .
+
+# Create .env for development
+RUN echo "NODE_ENV=development" > .env.local && \
+    echo "TYPESENSE_HOST=typesense" >> .env.local && \
+    echo "TYPESENSE_PORT=8108" >> .env.local && \
+    echo "TYPESENSE_PROTOCOL=http" >> .env.local && \
+    echo "TYPESENSE_API_KEY=xyz123" >> .env.local && \
+    echo "TYPESENSE_SEARCH_ONLY_API_KEY=search-only-xyz123" >> .env.local && \
+    echo "NEXT_PUBLIC_TYPESENSE_HOST=localhost" >> .env.local && \
+    echo "NEXT_PUBLIC_TYPESENSE_PORT=8108" >> .env.local && \
+    echo "NEXT_PUBLIC_TYPESENSE_PROTOCOL=http" >> .env.local && \
+    echo "NEXT_PUBLIC_TYPESENSE_SEARCH_ONLY_API_KEY=search-only-xyz123" >> .env.local
+
+EXPOSE 3000
+
+CMD ["npm", "run", "dev"]

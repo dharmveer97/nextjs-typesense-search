@@ -1,0 +1,297 @@
+# Comprehensive Docker Compose for Typesense Application
+version: '3.8'
+
+services:
+  # Typesense search engine
+  typesense:
+    image: typesense/typesense:29.0
+    container_name: typesense-server
+    ports:
+      - "${TYPESENSE_PORT:-8108}:8108"
+    volumes:
+      - typesense-data:/data
+      - ./config/typesense:/opt/typesense-server/config
+    environment:
+      TYPESENSE_DATA_DIR: /data
+      TYPESENSE_API_KEY: ${TYPESENSE_API_KEY:-development-key-change-in-production}
+      TYPESENSE_SEARCH_ONLY_API_KEY: ${TYPESENSE_SEARCH_ONLY_API_KEY:-search-key-change-in-production}
+      TYPESENSE_ENABLE_CORS: "true"
+      TYPESENSE_LOG_LEVEL: ${TYPESENSE_LOG_LEVEL:-INFO}
+    restart: unless-stopped
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8108/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+
+  # Redis for caching and session management
+  redis:
+    image: redis:7-alpine
+    container_name: typesense-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+      - ./config/redis/redis.conf:/etc/redis/redis.conf
+    command: redis-server /etc/redis/redis.conf
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    restart: unless-stopped
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # Next.js application - Development
+  app-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+      args:
+        - NODE_ENV=development
+    container_name: typesense-app-dev
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: development
+      # Typesense Configuration
+      TYPESENSE_HOST: typesense
+      TYPESENSE_PORT: 8108
+      TYPESENSE_PROTOCOL: http
+      TYPESENSE_API_KEY: ${TYPESENSE_API_KEY:-development-key-change-in-production}
+      TYPESENSE_SEARCH_ONLY_API_KEY: ${TYPESENSE_SEARCH_ONLY_API_KEY:-search-key-change-in-production}
+      # Public Configuration
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      NEXT_PUBLIC_TYPESENSE_HOST: ${NEXT_PUBLIC_TYPESENSE_HOST:-localhost}
+      NEXT_PUBLIC_TYPESENSE_PORT: ${TYPESENSE_PORT:-8108}
+      NEXT_PUBLIC_TYPESENSE_PROTOCOL: ${NEXT_PUBLIC_TYPESENSE_PROTOCOL:-http}
+      NEXT_PUBLIC_TYPESENSE_SEARCH_ONLY_API_KEY: ${TYPESENSE_SEARCH_ONLY_API_KEY:-search-key-change-in-production}
+      # Feature Flags
+      ENABLE_VECTOR_SEARCH: ${ENABLE_VECTOR_SEARCH:-true}
+      ENABLE_SEMANTIC_SEARCH: ${ENABLE_SEMANTIC_SEARCH:-true}
+      ENABLE_ANALYTICS: ${ENABLE_ANALYTICS:-true}
+      ENABLE_VOICE_SEARCH: ${ENABLE_VOICE_SEARCH:-true}
+      ENABLE_PERSONALIZATION: ${ENABLE_PERSONALIZATION:-true}
+      # External APIs
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
+      GOOGLE_AI_API_KEY: ${GOOGLE_AI_API_KEY:-}
+      # Redis Configuration
+      REDIS_URL: redis://redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      # Security
+      JWT_SECRET: ${JWT_SECRET:-development-jwt-secret-change-in-production}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-development-encryption-key-change-in-production}
+      # Rate Limiting
+      RATE_LIMIT_RPM: ${RATE_LIMIT_RPM:-1000}
+      RATE_LIMIT_RPH: ${RATE_LIMIT_RPH:-10000}
+    depends_on:
+      typesense:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - app-network
+    restart: unless-stopped
+    profiles:
+      - development
+
+  # Next.js application - Production
+  app-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+      args:
+        - NODE_ENV=production
+    container_name: typesense-app-prod
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      # Typesense Configuration
+      TYPESENSE_HOST: typesense
+      TYPESENSE_PORT: 8108
+      TYPESENSE_PROTOCOL: http
+      TYPESENSE_API_KEY: ${TYPESENSE_API_KEY}
+      TYPESENSE_SEARCH_ONLY_API_KEY: ${TYPESENSE_SEARCH_ONLY_API_KEY}
+      # Public Configuration
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+      NEXT_PUBLIC_TYPESENSE_HOST: ${NEXT_PUBLIC_TYPESENSE_HOST}
+      NEXT_PUBLIC_TYPESENSE_PORT: ${NEXT_PUBLIC_TYPESENSE_PORT:-8108}
+      NEXT_PUBLIC_TYPESENSE_PROTOCOL: ${NEXT_PUBLIC_TYPESENSE_PROTOCOL:-https}
+      NEXT_PUBLIC_TYPESENSE_SEARCH_ONLY_API_KEY: ${TYPESENSE_SEARCH_ONLY_API_KEY}
+      # Feature Flags
+      ENABLE_VECTOR_SEARCH: ${ENABLE_VECTOR_SEARCH:-true}
+      ENABLE_SEMANTIC_SEARCH: ${ENABLE_SEMANTIC_SEARCH:-true}
+      ENABLE_ANALYTICS: ${ENABLE_ANALYTICS:-true}
+      ENABLE_VOICE_SEARCH: ${ENABLE_VOICE_SEARCH:-true}
+      ENABLE_PERSONALIZATION: ${ENABLE_PERSONALIZATION:-true}
+      # External APIs
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT}
+      GOOGLE_AI_API_KEY: ${GOOGLE_AI_API_KEY}
+      # Redis Configuration
+      REDIS_URL: redis://redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      # Security
+      JWT_SECRET: ${JWT_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      # Rate Limiting
+      RATE_LIMIT_RPM: ${RATE_LIMIT_RPM:-500}
+      RATE_LIMIT_RPH: ${RATE_LIMIT_RPH:-5000}
+      # Monitoring
+      NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN}
+      NEXT_PUBLIC_VERCEL_ANALYTICS_ID: ${NEXT_PUBLIC_VERCEL_ANALYTICS_ID}
+    depends_on:
+      typesense:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+    profiles:
+      - production
+
+  # Nginx reverse proxy and load balancer
+  nginx:
+    image: nginx:alpine
+    container_name: typesense-nginx
+    ports:
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./config/nginx/sites-available:/etc/nginx/sites-available
+      - ./config/ssl:/etc/nginx/ssl
+      - nginx-logs:/var/log/nginx
+    depends_on:
+      - app-prod
+    networks:
+      - app-network
+    restart: unless-stopped
+    profiles:
+      - production
+
+  # Monitoring with Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: typesense-prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    networks:
+      - app-network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # Grafana for metrics visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: typesense-grafana
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    depends_on:
+      - prometheus
+    networks:
+      - app-network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # Testing service
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: testing
+    container_name: typesense-test
+    environment:
+      NODE_ENV: test
+      CI: "true"
+      # Test Configuration
+      TYPESENSE_HOST: typesense
+      TYPESENSE_PORT: 8108
+      TYPESENSE_PROTOCOL: http
+      TYPESENSE_API_KEY: ${TYPESENSE_API_KEY:-development-key-change-in-production}
+      TYPESENSE_SEARCH_ONLY_API_KEY: ${TYPESENSE_SEARCH_ONLY_API_KEY:-search-key-change-in-production}
+    depends_on:
+      typesense:
+        condition: service_healthy
+    networks:
+      - app-network
+    volumes:
+      - ./tests:/app/tests
+      - ./playwright-report:/app/playwright-report
+      - ./test-results:/app/test-results
+    profiles:
+      - testing
+
+# Named volumes for data persistence
+volumes:
+  typesense-data:
+    driver: local
+  redis-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+  nginx-logs:
+    driver: local
+
+# Network configuration
+networks:
+  app-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
